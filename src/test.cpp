@@ -8,6 +8,18 @@
 #include <random>
 #include <string>
 
+#define SCRIPT(script_name) (std::string("../test_utils/scripts/")+std::string(script_name)).c_str()
+
+static uint16_t generateRandomPort() {
+    static thread_local std::random_device rd;
+    static thread_local std::mt19937 gen(rd());
+    static thread_local std::uniform_int_distribution<uint16_t> dis(10000, 19999);
+    uint16_t ret = dis(gen);
+    if (ret == 12345)
+        ret ++;
+    return ret;
+}
+
 static void changeThreadNs(const char *ns) {
     int fd = open(ns, O_RDONLY);
     if (fd == -1) {
@@ -91,53 +103,76 @@ std::tuple<bool, std::string> tryToConnect(const char* host, uint16_t port) {
 }
 
 TEST(Lab3, NAT) {
-    system("../scripts/load_ebpfs.sh");
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
     changeThreadNs("/var/run/netns/ns1");
-    system("../scripts/stop_server.sh");
-    system("../scripts/start_server.sh ns4 8888");
+    ret = system(SCRIPT("stop_server.sh"));
+    ASSERT_EQ(ret, 0);
+    uint16_t port = generateRandomPort();
+    std::string cmd = std::string(SCRIPT("start_server.sh ns4 ")) + std::to_string(port);
+    ret = system(cmd.c_str());
+    ASSERT_EQ(ret, 0);
     usleep(1000);
-    auto [success, msg] = tryToConnect("10.0.0.4", 8888);
-    system("../scripts/stop_server.sh");
+    auto [success, msg] = tryToConnect("10.0.0.4", port);
+    ret = system(SCRIPT("stop_server.sh"));
     ASSERT_TRUE(success) << msg;
 }
 
 TEST(Lab3, ProxyAdd) {
-    system("../scripts/load_ebpfs.sh");
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
     changeThreadNs("/var/run/netns/ns1");
-    system("../scripts/stop_server.sh");
-    system("../scripts/clear_rules.sh");
-    uint16_t baned_port = 8889;
-    system((std::string("../scripts/add_rule.sh ") + std::to_string(baned_port)).c_str());
-    system((std::string("../scripts/start_server.sh ns3 ") + std::to_string(baned_port)).c_str());
+    ret = system(SCRIPT("stop_server.sh"));
+    ASSERT_EQ(ret, 0);
+    ret = system(SCRIPT("clear_rules.sh"));
+    ASSERT_EQ(ret, 0);
+    uint16_t baned_port = generateRandomPort();
+    ret = system((std::string(SCRIPT("add_rule.sh ") + std::to_string(baned_port)).c_str()));
+    ASSERT_EQ(ret, 0);
+    ret = system((std::string(SCRIPT("start_server.sh ns3 ") + std::to_string(baned_port)).c_str()));
+    ASSERT_EQ(ret, 0);
     usleep(1000);
     auto [success, msg] = tryToConnect("10.0.0.3", baned_port);
-    system("../scripts/stop_server.sh");
+    ret = system(SCRIPT("stop_server.sh"));
     ASSERT_TRUE(success) << msg;
 }
 
 TEST(Lab3, ProxyAddDel) {
-    system("../scripts/load_ebpfs.sh");
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
     changeThreadNs("/var/run/netns/ns1");
-    system("../scripts/stop_server.sh");
-    system("../scripts/clear_rules.sh");
+    ret = system(SCRIPT("stop_server.sh"));
+    ASSERT_EQ(ret, 0);
+    ret = system(SCRIPT("clear_rules.sh"));
+    ASSERT_EQ(ret, 0);
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_int_distribution<uint16_t> dis(10000, 20000);
     uint16_t baned_port = dis(gen);
-    system((std::string("../scripts/add_rule.sh ") + std::to_string(baned_port)).c_str());
-    system((std::string("../scripts/del_rule.sh ") + std::to_string(baned_port)).c_str());
-    system((std::string("../scripts/start_server.sh ns3 ") + std::to_string(baned_port)).c_str());
+    ret = system((std::string(SCRIPT("add_rule.sh ") + std::to_string(baned_port)).c_str()));
+    ASSERT_EQ(ret, 0);
+    ret = system((std::string(SCRIPT("del_rule.sh ") + std::to_string(baned_port)).c_str()));
+    ASSERT_EQ(ret, 0);
+    ret = system((std::string(SCRIPT("start_server.sh ns3 ") + std::to_string(baned_port)).c_str()));
+    ASSERT_EQ(ret, 0);
     usleep(1000);
     auto [success, msg] = tryToConnect("10.0.0.3", baned_port);
-    system("../scripts/stop_server.sh");
+    ret = system(SCRIPT("stop_server.sh"));
     ASSERT_TRUE(success) << msg;
 }
 
 TEST(Lab3, ProxyAddMulti) {
-    system("../scripts/load_ebpfs.sh");
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
     changeThreadNs("/var/run/netns/ns1");
-    system("../scripts/stop_server.sh");
-    system("../scripts/clear_rules.sh");
+    ret = system(SCRIPT("stop_server.sh"));
+    ASSERT_EQ(ret, 0);
+    ret = system(SCRIPT("clear_rules.sh"));
+    ASSERT_EQ(ret, 0);
     std::vector<uint16_t> baned_ports;
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -146,15 +181,17 @@ TEST(Lab3, ProxyAddMulti) {
         baned_ports.push_back(dis(gen));
     std::string cmd = "";
     for (auto port : baned_ports) {
-        system((std::string("../scripts/add_rule.sh ") + std::to_string(port)).c_str());
+        ret = system((std::string(SCRIPT("add_rule.sh ") + std::to_string(port)).c_str()));
+        ASSERT_EQ(ret, 0);
         cmd += " " + std::to_string(port);
     }
-    system((std::string("../scripts/start_server.sh ns3") + cmd).c_str());
+    ret = system((std::string(SCRIPT("start_server.sh ns3") + cmd).c_str()));
+    ASSERT_EQ(ret, 0);
     usleep(1000);
     for (auto port : baned_ports) {
         auto [success, msg] = tryToConnect("10.0.0.3", port);
         if (!success) {
-            system("../scripts/stop_server.sh");
+            ret = system(SCRIPT("stop_server.sh"));
             ASSERT_TRUE(success) << msg;
         }
     }

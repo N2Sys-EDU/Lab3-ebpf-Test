@@ -1,4 +1,4 @@
-#include "common.h"
+#include "../common.h"
 
 SEC("xdp_ingress")
 int xdp_ingress_func(struct xdp_md* ctx) {
