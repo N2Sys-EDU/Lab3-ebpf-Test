@@ -11,6 +11,5 @@ clang-15 -O2 -target bpf -c ../test_utils/src/xdp_forward.c -o xdp_forward.o  -I
 
 ip netns exec ns5 bash ../test_utils/scripts/load_ebpfs_router.sh
 ip netns exec ns3 bash ../test_utils/scripts/load_ebpfs_target.sh
-ip netns exec ns2 bash ../test_utils/scripts/load_ebpfs_nat.sh
+ip netns exec ns2 bash ../test_utils/scripts/load_ebpfs_nat_client.sh
 ip netns exec ns4 bash ../test_utils/scripts/load_ebpfs_proxy_server.sh
-ip netns exec ns1 bash ../test_utils/scripts/load_ebpfs_proxy_client.sh
