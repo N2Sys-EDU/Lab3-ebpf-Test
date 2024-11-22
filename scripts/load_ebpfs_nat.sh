@@ -11,5 +11,9 @@ tc filter add dev veth2_5 egress bpf da object-pinned /sys/fs/bpf/nat_module_1 s
 bpftool net attach xdp pinned /sys/fs/bpf/nat_module_2 dev veth2_5
 
 bpftool prog load proxy_client_module_1.o /sys/fs/bpf/proxy_client_module_1 type xdp
+bpftool prog load proxy_client_module_2.o /sys/fs/bpf/proxy_client_module_2 type classifier
 bpftool net detach xdp dev veth2_1 || echo "No xdp program to detach"
 bpftool net attach xdp pinned /sys/fs/bpf/proxy_client_module_1 dev veth2_1
+tc qdisc del dev veth2_1 clsact || echo "No qdisc to delete"
+tc qdisc add dev veth2_1 clsact
+tc filter add dev veth2_1 egress bpf da object-pinned /sys/fs/bpf/proxy_client_module_2 sec tc_egress
