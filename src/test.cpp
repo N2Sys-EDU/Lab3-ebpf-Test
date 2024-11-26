@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <random>
 #include <string>
+#include <algorithm>
 
 #define SCRIPT(script_name) (std::string("../test_utils/scripts/")+std::string(script_name)).c_str()
 
@@ -102,7 +103,55 @@ std::tuple<bool, std::string> tryToConnect(const char* host, uint16_t port) {
     return std::make_tuple(true, "");
 }
 
-TEST(Lab3, NAT) {
+std::tuple<bool, std::string> tryToCommUDP(const char* host, uint16_t port) {
+    int client_sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (client_sock == -1) {
+        return std::make_tuple(false, "Failed to create socket");
+    }
+
+    struct sockaddr_in server_addr;
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = inet_addr(host);
+
+    auto flags = fcntl(client_sock, F_GETFL);
+    if (fcntl(client_sock, F_SETFL, (O_NONBLOCK | flags)) == -1) {
+        perror("fcntl");
+        close(client_sock);
+        return std::make_tuple(false, "Failed to set socket to non-blocking mode");
+    }
+    char doorbell[16];
+    memset(doorbell, 0, 16);
+    sendto(client_sock, doorbell, 16, 0, (struct sockaddr *)&server_addr, sizeof(server_addr));
+
+    fd_set write_fds;
+    FD_ZERO(&write_fds);
+    FD_SET(client_sock, &write_fds);
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+
+    struct sockaddr_in target_addr;
+    socklen_t target_addr_len = sizeof(target_addr);
+    char buff[128];
+    int count = 0;
+    while (recvfrom(client_sock, buff, 128, 0, (struct sockaddr *)&target_addr, &target_addr_len) <= 0) {
+        usleep(1000);
+        count ++;
+        if (count == 1000) {
+            close(client_sock);
+            return std::make_tuple(false, "Receive timeout 1");
+        }
+    }
+    if (target_addr.sin_addr.s_addr != server_addr.sin_addr.s_addr || target_addr.sin_port != server_addr.sin_port) {
+        close(client_sock);
+        return std::make_tuple(false, "Invalid response");
+    }
+    close(client_sock);
+    return std::make_tuple(true, "");
+}
+
+TEST(Basic, Env) {
     int ret;
     ret = system(SCRIPT("load_ebpfs.sh"));
     ASSERT_EQ(ret, 0);
@@ -110,16 +159,32 @@ TEST(Lab3, NAT) {
     ret = system(SCRIPT("stop_server.sh"));
     ASSERT_EQ(ret, 0);
     uint16_t port = generateRandomPort();
-    std::string cmd = std::string(SCRIPT("start_server.sh ns4 ")) + std::to_string(port);
-    ret = system(cmd.c_str());
+    ret = system((std::string(SCRIPT("start_server.sh ns2 ") + std::to_string(port)).c_str()));
     ASSERT_EQ(ret, 0);
     usleep(1000);
-    auto [success, msg] = tryToConnect("10.0.0.4", port);
+    auto [success, msg] = tryToConnect("192.168.1.1", port);
     ret = system(SCRIPT("stop_server.sh"));
     ASSERT_TRUE(success) << msg;
 }
 
-TEST(Lab3, ProxyAdd) {
+TEST(Basic, NAT_UDP) {
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
+    changeThreadNs("/var/run/netns/ns1");
+    ret = system(SCRIPT("stop_server_udp.sh"));
+    ASSERT_EQ(ret, 0);
+    uint16_t port = generateRandomPort();
+    std::string cmd = std::string(SCRIPT("start_server_udp.sh ns4 ")) + std::to_string(port);
+    ret = system(cmd.c_str());
+    ASSERT_EQ(ret, 0);
+    usleep(1000);
+    auto [success, msg] = tryToCommUDP("10.0.0.4", port);
+    ret = system(SCRIPT("stop_server_udp.sh"));
+    ASSERT_TRUE(success) << msg;
+}
+
+TEST(Basic, ProxyAdd) {
     int ret;
     ret = system(SCRIPT("load_ebpfs.sh"));
     ASSERT_EQ(ret, 0);
@@ -139,7 +204,7 @@ TEST(Lab3, ProxyAdd) {
     ASSERT_TRUE(success) << msg;
 }
 
-TEST(Lab3, ProxyAddDel) {
+TEST(Basic, ProxyDel) {
     int ret;
     ret = system(SCRIPT("load_ebpfs.sh"));
     ASSERT_EQ(ret, 0);
@@ -164,7 +229,78 @@ TEST(Lab3, ProxyAddDel) {
     ASSERT_TRUE(success) << msg;
 }
 
-TEST(Lab3, ProxyAddMulti) {
+TEST(Multiflow, TCP_NAT) {
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
+    changeThreadNs("/var/run/netns/ns1");
+    ret = system(SCRIPT("stop_server_udp.sh"));
+    ASSERT_EQ(ret, 0);
+    ret = system(SCRIPT("clear_rules.sh"));
+    ASSERT_EQ(ret, 0);
+    std::vector<uint16_t> baned_ports;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dis(10000, 20000);
+    for (int i = 0; i < 10; i ++) {
+        uint16_t p;
+        do {
+            p = dis(gen);
+        } while (std::find(baned_ports.begin(), baned_ports.end(), p) != baned_ports.end());
+        baned_ports.push_back(p);
+    }
+    std::string cmd = "";
+    for (auto port : baned_ports) {
+        // ret = system((std::string(SCRIPT("add_rule.sh ") + std::to_string(port)).c_str()));
+        ASSERT_EQ(ret, 0);
+        cmd += " " + std::to_string(port);
+    }
+    ret = system((std::string(SCRIPT("start_server_udp.sh ns3") + cmd).c_str()));
+    ASSERT_EQ(ret, 0);
+    usleep(1000);
+    for (auto port : baned_ports) {
+        auto [success, msg] = tryToCommUDP("10.0.0.3", port);
+        if (!success) {
+            ret = system(SCRIPT("stop_server.sh"));
+            ASSERT_TRUE(success) << msg;
+        }
+    }
+}
+
+TEST(Multiflow, UDP_NAT) {
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
+    changeThreadNs("/var/run/netns/ns1");
+    ret = system(SCRIPT("stop_server.sh"));
+    ASSERT_EQ(ret, 0);
+    ret = system(SCRIPT("clear_rules.sh"));
+    ASSERT_EQ(ret, 0);
+    std::vector<uint16_t> baned_ports;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dis(10000, 20000);
+    for (int i = 0; i < 10; i ++)
+        baned_ports.push_back(dis(gen));
+    std::string cmd = "";
+    for (auto port : baned_ports) {
+        // ret = system((std::string(SCRIPT("add_rule.sh ") + std::to_string(port)).c_str()));
+        ASSERT_EQ(ret, 0);
+        cmd += " " + std::to_string(port);
+    }
+    ret = system((std::string(SCRIPT("start_server.sh ns3") + cmd).c_str()));
+    ASSERT_EQ(ret, 0);
+    usleep(1000);
+    for (auto port : baned_ports) {
+        auto [success, msg] = tryToConnect("10.0.0.3", port);
+        if (!success) {
+            ret = system(SCRIPT("stop_server.sh"));
+            ASSERT_TRUE(success) << msg;
+        }
+    }
+}
+
+TEST(Multiflow, ProxyAdd) {
     int ret;
     ret = system(SCRIPT("load_ebpfs.sh"));
     ASSERT_EQ(ret, 0);
