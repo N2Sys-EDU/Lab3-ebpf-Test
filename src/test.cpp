@@ -229,7 +229,7 @@ TEST(Basic, ProxyDel) {
     ASSERT_TRUE(success) << msg;
 }
 
-TEST(Multiflow, TCP_NAT) {
+TEST(Multiflow, UDP_NAT) {
     int ret;
     ret = system(SCRIPT("load_ebpfs.sh"));
     ASSERT_EQ(ret, 0);
@@ -267,7 +267,7 @@ TEST(Multiflow, TCP_NAT) {
     }
 }
 
-TEST(Multiflow, UDP_NAT) {
+TEST(Multiflow, TCP_NAT) {
     int ret;
     ret = system(SCRIPT("load_ebpfs.sh"));
     ASSERT_EQ(ret, 0);
