@@ -333,6 +333,44 @@ TEST(Multiflow, ProxyAdd) {
     }
 }
 
+TEST(Multiflow, ProxyDel) {
+    int ret;
+    ret = system(SCRIPT("load_ebpfs.sh"));
+    ASSERT_EQ(ret, 0);
+    changeThreadNs("/var/run/netns/ns1");
+    ret = system(SCRIPT("stop_server.sh"));
+    ASSERT_EQ(ret, 0);
+    ret = system(SCRIPT("clear_rules.sh"));
+    ASSERT_EQ(ret, 0);
+    std::vector<uint16_t> baned_ports;
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<uint16_t> dis(10000, 20000);
+    for (int i = 0; i < 10; i ++)
+        baned_ports.push_back(dis(gen));
+    std::string cmd = "";
+    for (auto port : baned_ports) {
+        ret = system((std::string(SCRIPT("add_rule.sh ") + std::to_string(port)).c_str()));
+        ASSERT_EQ(ret, 0);
+        cmd += " " + std::to_string(port);
+    }
+    ret = system((std::string(SCRIPT("start_server.sh ns3") + cmd).c_str()));
+    ASSERT_EQ(ret, 0);
+    usleep(1000);
+    for (int i = 0; i < 3; i ++) {
+        ret = system((std::string(SCRIPT("del_rule.sh ") + std::to_string(baned_ports[i])).c_str()));
+        ASSERT_EQ(ret, 0);
+    }
+    usleep(1000);
+    for (auto port : baned_ports) {
+        auto [success, msg] = tryToConnect("10.0.0.3", port);
+        if (!success) {
+            ret = system(SCRIPT("stop_server.sh"));
+            ASSERT_TRUE(success) << msg;
+        }
+    }
+}
+
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
