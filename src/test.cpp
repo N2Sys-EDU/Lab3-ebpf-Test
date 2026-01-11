@@ -67,7 +67,9 @@ std::tuple<bool, std::string> tryToConnect(const char* host, uint16_t port) {
         getsockopt(client_sock, SOL_SOCKET, SO_ERROR, &err, &err_len);
         if (status == 0) {
             close(client_sock);
-            return std::make_tuple(false, "Connection timeout 1");
+            return std::make_tuple(false, "TCP handshake timeout.\n"
+                "Either all packages from the client fail to reach the server or"
+                "all packages from the server cannot reach the client.");
         }
         if (err != 0) {
             close(client_sock);
@@ -80,7 +82,7 @@ std::tuple<bool, std::string> tryToConnect(const char* host, uint16_t port) {
             count ++;
             if (count == 1000) {
                 close(client_sock);
-                return std::make_tuple(false, "Connection timeout 2");
+                return std::make_tuple(false, "TCP Connection established, but consequent messages lost.");
             }
         }
         close(client_sock);
@@ -92,7 +94,7 @@ std::tuple<bool, std::string> tryToConnect(const char* host, uint16_t port) {
             count ++;
             if (count == 1000) {
                 close(client_sock);
-                return std::make_tuple(false, "Connection timeout 3");
+                return std::make_tuple(false, "TCP Connection established, but consequent messages lost.");
             }
         }
         close(client_sock);
