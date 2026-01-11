@@ -10,6 +10,6 @@ echo 1 | tee /proc/sys/net/ipv4/conf/veth5_2/proxy_arp
 echo 1 | tee /proc/sys/net/ipv4/conf/veth5_3/proxy_arp
 echo 1 | tee /proc/sys/net/ipv4/conf/veth5_4/proxy_arp
 
-ping -c 1 10.0.0.2 -W 0.1s
-ping -c 1 10.0.0.3 -W 0.1s
-ping -c 1 10.0.0.4 -W 0.1s
+ping -c 1 10.0.0.2 -W 0.1
+ping -c 1 10.0.0.3 -W 0.1
+ping -c 1 10.0.0.4 -W 0.1
